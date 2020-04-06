@@ -6,6 +6,7 @@
 #include <tchar.h>
 #include <sstream>
 #include <string>
+#include <tgmath.h>
 
 #include "kernel_loader.hpp"
 
@@ -80,17 +81,18 @@ int main(int argc, TCHAR *argv[])
     int* convImStream;
     float kernelData[KN_HEIGHT][KN_WIDTH];
     float kernelTranspose[KN_HEIGHT][KN_WIDTH];
-    int  outImage[IM_HEIGHT][IM_WIDTH][IM_DEPTH];
+    int zeroPadHeight = IM_HEIGHT + (KN_HEIGHT - 1);
+    int zeroPadWidth  = IM_WIDTH + (KN_WIDTH - 1);
+    int zeroPadTop    = floor(KN_HEIGHT/2);
+    int zeroPadSide   = floor(KN_WIDTH/2);
+    int zeroPadIm[zeroPadHeight][zeroPadWidth][IM_DEPTH];
+    int outImage[IM_HEIGHT][IM_WIDTH][IM_DEPTH];
     string inData;
     imStream     = (int *) malloc(sizeof(image));
     convImStream = (int *) malloc(sizeof(image));
     ofstream toFPGA   ("output.txt");
     ifstream fromFPGA ("input.txt");
     string csv_pth = "test_kernel.csv";
-    string sendingCommand = "powershell.exe -noexit";
-    string receivingCommand = "powershell.exe -noexit";
-    sendingCommand << '"& ' << "'c:\Users\Paul\Documents\Senior_Project\sending.ps1'" << '"';
-    receivingCommand << '"& ' << "'c:\Users\Paul\Documents\Senior_Project\receiving.ps1'" << '"';
 
     /* Convert input kernel data from 2D array to 1D stream */
     std::vector<float> kernel_test = load_kernel(csv_pth,KN_HEIGHT,KN_WIDTH);
@@ -109,6 +111,21 @@ int main(int argc, TCHAR *argv[])
     for(int i = 0; i < KN_HEIGHT; i++){
         for(int j = 0; j < KN_WIDTH; j++){
             kernel_test[(i*KN_WIDTH) + j] = kernelTranspose[i][j];
+        }
+    }
+
+    /* Zero-Pad input image */
+    for(int i = 0; i < IM_DEPTH; i++){
+        for(int j = 0; j < zeroPadHeight; j++){
+            for(int k = 0; k < zeroPadWidth; k++){
+                if(j < (zeroPadTop + 1) || j > zeroPadHeight - (zeroPadTop + 1))
+                    zeroPadIm[j][k][i] = 0;
+                else if(k < (zeroPadSide + 1) || k > zeroPadWidth - (zeroPadSide + 1))
+                    zeroPadIm[j][k][i] = 0;
+                else{
+                    zeroPadIm[j][k][i] = image[j-zeroPadTop-1][k-zeroPadSide-1][i];
+                }
+            }
         }
     }
 
@@ -131,9 +148,9 @@ int main(int argc, TCHAR *argv[])
     }
 
     /* Open two processes to send and receive data from FPGA */
-    if (send = CreateProcess(NULL, sendingCommand, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi1) == false)
+    if (send = CreateProcess(NULL, "whoami", NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi1) == false)
         cout << "CreateProcess1 failed" << endl;
-    if (receive = CreateProcess(NULL, receivingCommand, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi2) == false)
+    if (receive = CreateProcess(NULL, "whoami", NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi2) == false)
         cout << "CreateProcess2 failed" << endl;
 
     /* Wait for both processes to finish */
@@ -158,9 +175,20 @@ int main(int argc, TCHAR *argv[])
 
     /* Arrange stream into image style */
     for (i = 0; i < IM_DEPTH; i++){
-        for (int j = 0; j < IM_HEIGHT; j++){
-            for (int k = 0; k < IM_WIDTH; k++)
-                outImage[i][j][k] = convImStream[(i*IM_WIDTH*IM_DEPTH) + (j*IM_DEPTH) + k];
+        for (int j = 0; j < zeroPadHeight; j++){
+            for (int k = 0; k < zeroPadWidth; k++)
+                zeroPadIm[i][j][k] = convImStream[(i*zeroPadWidth*IM_DEPTH) + (j*IM_DEPTH) + k];
+        }
+    }
+
+    /* Clip out garbage data from zero-pad output */
+    for(i = 0; i < IM_DEPTH; i++){
+        for(int j = 0; j < zeroPadHeight; j++){
+            for(int k = 0; k < zeroPadWidth; k++){
+                if(!((j < (zeroPadTop + 1) || j > zeroPadHeight - (zeroPadTop + 1)) || (k < (zeroPadSide + 1) || k > zeroPadWidth - (zeroPadSide + 1)))){
+                    outImage[j-zeroPadTop-1][k-zeroPadSide-1][i] = zeroPadIm[j][k][i];
+                }
+            }
         }
     }
 
