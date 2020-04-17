@@ -1,4 +1,4 @@
-using System; 
+﻿using System; 
 using System.IO; 
 using System.IO.Ports;
 using System.Diagnostics; 
@@ -36,8 +36,9 @@ public class SerialTest_v2
         SerialPort fpgaComPort = new SerialPort(portName,baudRate,parity,dataBits,stopBit); 
         fpgaComPort.ReadBufferSize  = numInputBytes;
         fpgaComPort.WriteBufferSize = numOutputBytes;
+        fpgaComPort.Handshake       = System.IO.Ports.Handshake.RequestToSend;
 
-        /* Load output bytes into Byte[] struct */ 
+        /* Load output bytes into Byte[] struct */
         for (i = 0; i < hexBytes.Length; i++)
         {
             Byte hexValue = Convert.ToByte(hexBytes[i],16);
